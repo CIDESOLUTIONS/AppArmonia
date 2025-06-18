@@ -7,6 +7,9 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { RolUsuario } from '@prisma/client';
 
+// Re-exportar RolUsuario para uso en middleware y otros módulos
+export { RolUsuario };
+
 // =============================================
 // CONFIGURACIÓN JWT
 // =============================================
