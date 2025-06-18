@@ -1,0 +1,684 @@
+// Esquema Prisma para Armonía - Sistema Multi-tenant
+// Cada conjunto residencial tendrá un esquema dedicado: tenant_cjXXXX
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================
+// MODELOS BASE PARA MULTI-TENANCY
+// =====================================
+
+// Modelo principal para gestión de conjuntos (esquema público)
+model ConjuntoResidencial {
+  id               String   @id @default(cuid())
+  nombre           String
+  nit              String?
+  direccion        String
+  telefono         String?
+  email            String?
+  sitioWeb         String?
+  representanteLegal String?
+  
+  // Información Multi-tenant
+  tenantId         String   @unique // tenant_cjXXXX
+  esquema          String   // Nombre del esquema en PostgreSQL
+  
+  // Plan de suscripción
+  plan             PlanTipo @default(BASICO)
+  fechaCreacion    DateTime @default(now())
+  fechaExpiracion  DateTime?
+  activo           Boolean  @default(true)
+  
+  // Configuraciones específicas
+  maxUnidades      Int      @default(25) // Límite según plan
+  configuracion    Json?    // Configuraciones personalizadas
+  
+  // Relaciones
+  usuarios         Usuario[]
+  
+  @@map("conjuntos_residenciales")
+}
+
+// Enum para los planes de suscripción
+enum PlanTipo {
+  BASICO
+  ESTANDAR
+  PREMIUM
+}
+
+// =====================================
+// MODELOS COMUNES A TODOS LOS TENANTS
+// =====================================
+
+// Modelo de usuario (se replica en cada esquema tenant)
+model Usuario {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  telefono         String?
+  nombreCompleto   String
+  password         String   // Hash bcrypt
+  
+  // Control de acceso
+  rol              RolUsuario
+  activo           Boolean  @default(true)
+  emailVerificado  Boolean  @default(false)
+  
+  // Información de sesiones
+  ultimoLogin      DateTime?
+  tokenRecuperacion String?
+  tokenExpiracion  DateTime?
+  
+  // Relaciones Multi-tenant
+  conjuntoId       String?
+  conjunto         ConjuntoResidencial? @relation(fields: [conjuntoId], references: [id])
+  
+  // Metadatos
+  fechaCreacion    DateTime @default(now())
+  fechaActualizacion DateTime @updatedAt
+  
+  // Relaciones dentro del tenant (estas se definirán en cada esquema)
+  pqrsCreados      PQR[]         @relation("PQRCreador")   // PQRs creados por el usuario
+  pqrsAsignados    PQR[]         @relation("PQRAsignado")  // PQRs asignados al usuario
+  propietarios     Propietario[] @relation("PropietarioUsuario") // Si es propietario
+  residentes       Residente[]   @relation("ResidenteUsuario")   // Si es residente
+  
+  @@map("usuarios")
+}
+
+// Enum para roles de usuario
+enum RolUsuario {
+  SUPER_ADMIN     // Administrador de la aplicación
+  ADMIN_CONJUNTO  // Administrador del conjunto
+  RESIDENTE       // Residente del conjunto
+  PROPIETARIO     // Propietario de una unidad
+  RECEPCION       // Personal de recepción
+  VIGILANCIA      // Personal de vigilancia
+  MANTENIMIENTO   // Personal de mantenimiento
+}
+
+// =====================================
+// MODELO PARA CADA ESQUEMA TENANT
+// (Se crearán dinámicamente por conjunto)
+// =====================================
+
+// Estas definiciones son de referencia para la estructura
+// que tendrá cada esquema tenant_cjXXXX
+
+model Propiedad {
+  id               String   @id @default(cuid())
+  numero           String   // Número de apartamento/casa
+  bloque           String?  // Bloque o torre
+  tipo             TipoPropiedad
+  area             Float?   // Área en m²
+  valor            Float?   // Valor avalúo
+  coeficiente      Float?   // Coeficiente de participación
+  
+  // Estado
+  estado           EstadoPropiedad @default(ACTIVA)
+  fechaCreacion    DateTime @default(now())
+  fechaActualizacion DateTime @updatedAt
+  
+  // Relaciones
+  propietarios     PropietarioPropiedad[]
+  residentes       ResidentePropiedad[]
+  vehiculos        Vehiculo[]
+  mascotas         Mascota[]
+  cuotas           Cuota[]
+  pagos            Pago[]
+  reservas         Reserva[]
+  pqrs             PQR[]
+  asistenciasAsamblea AsistenciaAsamblea[]
+  votos            Voto[]
+  
+  @@unique([numero, bloque])
+  @@map("propiedades")
+}
+
+enum TipoPropiedad {
+  APARTAMENTO
+  CASA
+  LOCAL_COMERCIAL
+  PARQUEADERO
+  DEPOSITO
+}
+
+enum EstadoPropiedad {
+  ACTIVA
+  INACTIVA
+  VENDIDA
+  ARRENDADA
+}
+
+// Modelo para propietarios
+model Propietario {
+  id               String   @id @default(cuid())
+  numeroDocumento  String   @unique
+  tipoDocumento    TipoDocumento
+  nombreCompleto   String
+  telefono         String?
+  email            String?
+  direccion        String?
+  
+  // Estado
+  activo           Boolean  @default(true)
+  fechaCreacion    DateTime @default(now())
+  fechaActualizacion DateTime @updatedAt
+  
+  // Relaciones
+  propiedades      PropietarioPropiedad[]
+  usuario          Usuario? @relation("PropietarioUsuario", fields: [usuarioId], references: [id])
+  usuarioId        String?
+  
+  @@map("propietarios")
+}
+
+// Tabla de relación many-to-many entre propietarios y propiedades
+model PropietarioPropiedad {
+  id           String     @id @default(cuid())
+  propietarioId String
+  propiedadId  String
+  porcentaje   Float      @default(100) // Porcentaje de propiedad
+  fechaInicio  DateTime   @default(now())
+  fechaFin     DateTime?
+  activo       Boolean    @default(true)
+  
+  // Relaciones
+  propietario  Propietario @relation(fields: [propietarioId], references: [id])
+  propiedad    Propiedad   @relation(fields: [propiedadId], references: [id])
+  
+  @@unique([propietarioId, propiedadId])
+  @@map("propietarios_propiedades")
+}
+
+// Modelo para residentes
+model Residente {
+  id               String   @id @default(cuid())
+  numeroDocumento  String   @unique
+  tipoDocumento    TipoDocumento
+  nombreCompleto   String
+  telefono         String?
+  email            String?
+  fechaNacimiento  DateTime?
+  
+  // Estado
+  activo           Boolean  @default(true)
+  fechaCreacion    DateTime @default(now())
+  fechaActualizacion DateTime @updatedAt
+  
+  // Relaciones
+  propiedades      ResidentePropiedad[]
+  usuario          Usuario? @relation("ResidenteUsuario", fields: [usuarioId], references: [id])
+  usuarioId        String?
+  
+  @@map("residentes")
+}
+
+// Tabla de relación many-to-many entre residentes y propiedades
+model ResidentePropiedad {
+  id           String    @id @default(cuid())
+  residenteId  String
+  propiedadId  String
+  relacion     TipoRelacion
+  fechaInicio  DateTime  @default(now())
+  fechaFin     DateTime?
+  activo       Boolean   @default(true)
+  
+  // Relaciones
+  residente    Residente @relation(fields: [residenteId], references: [id])
+  propiedad    Propiedad @relation(fields: [propiedadId], references: [id])
+  
+  @@unique([residenteId, propiedadId])
+  @@map("residentes_propiedades")
+}
+
+enum TipoDocumento {
+  CC    // Cédula de ciudadanía
+  CE    // Cédula de extranjería
+  PP    // Pasaporte
+  TI    // Tarjeta de identidad
+  NIT   // NIT para empresas
+}
+
+enum TipoRelacion {
+  PROPIETARIO
+  ARRENDATARIO
+  FAMILIAR
+  OTRO
+}
+
+// =====================================
+// MODELOS ADICIONALES DEL SISTEMA
+// =====================================
+
+// Modelo para vehículos
+model Vehiculo {
+  id           String    @id @default(cuid())
+  placa        String    @unique
+  marca        String
+  modelo       String
+  color        String
+  tipo         TipoVehiculo
+  
+  // Relaciones
+  propiedadId  String
+  propiedad    Propiedad @relation(fields: [propiedadId], references: [id])
+  
+  // Estado
+  activo       Boolean   @default(true)
+  fechaCreacion DateTime @default(now())
+  
+  @@map("vehiculos")
+}
+
+enum TipoVehiculo {
+  AUTOMOVIL
+  MOTOCICLETA
+  BICICLETA
+  CAMIONETA
+  OTRO
+}
+
+// Modelo para mascotas
+model Mascota {
+  id           String    @id @default(cuid())
+  nombre       String
+  tipo         TipoMascota
+  raza         String?
+  color        String?
+  edad         Int?
+  
+  // Relaciones
+  propiedadId  String
+  propiedad    Propiedad @relation(fields: [propiedadId], references: [id])
+  
+  // Estado
+  activo       Boolean   @default(true)
+  fechaCreacion DateTime @default(now())
+  
+  @@map("mascotas")
+}
+
+enum TipoMascota {
+  PERRO
+  GATO
+  AVE
+  PEZ
+  OTRO
+}
+
+// =====================================
+// SISTEMA PQR
+// =====================================
+
+model PQR {
+  id               String      @id @default(cuid())
+  numero           String      @unique // Número consecutivo
+  titulo           String
+  descripcion      String
+  tipo             TipoPQR
+  categoria        CategoriaPQR
+  prioridad        PrioridadPQR @default(MEDIA)
+  estado           EstadoPQR    @default(PENDIENTE)
+  
+  // Relaciones
+  propiedadId      String?
+  propiedad        Propiedad?  @relation(fields: [propiedadId], references: [id])
+  usuarioCreadorId String
+  usuarioCreador   Usuario     @relation("PQRCreador", fields: [usuarioCreadorId], references: [id])
+  usuarioAsignadoId String?
+  usuarioAsignado  Usuario?    @relation("PQRAsignado", fields: [usuarioAsignadoId], references: [id])
+  
+  // Respuesta
+  respuesta        String?
+  fechaRespuesta   DateTime?
+  
+  // Archivos adjuntos
+  archivos         ArchivoAdjunto[]
+  
+  // Metadatos
+  fechaCreacion    DateTime @default(now())
+  fechaActualizacion DateTime @updatedAt
+  fechaVencimiento DateTime?
+  
+  @@map("pqrs")
+}
+
+enum TipoPQR {
+  PETICION
+  QUEJA
+  RECLAMO
+  SUGERENCIA
+}
+
+enum CategoriaPQR {
+  MANTENIMIENTO
+  SEGURIDAD
+  ADMINISTRACION
+  FINANZAS
+  CONVIVENCIA
+  SERVICIOS_PUBLICOS
+  OTRO
+}
+
+enum PrioridadPQR {
+  BAJA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+enum EstadoPQR {
+  PENDIENTE
+  EN_PROCESO
+  RESUELTO
+  CERRADO
+  CANCELADO
+}
+
+// =====================================
+// GESTIÓN FINANCIERA
+// =====================================
+
+model Cuota {
+  id               String     @id @default(cuid())
+  numero           String     // Número de cuota
+  tipo             TipoCuota
+  concepto         String
+  valor            Float
+  fechaVencimiento DateTime
+  
+  // Relaciones
+  propiedadId      String
+  propiedad        Propiedad  @relation(fields: [propiedadId], references: [id])
+  
+  // Estado
+  estado           EstadoCuota @default(PENDIENTE)
+  fechaCreacion    DateTime   @default(now())
+  
+  // Relaciones con pagos
+  pagos            Pago[]
+  
+  @@map("cuotas")
+}
+
+enum TipoCuota {
+  ORDINARIA
+  EXTRAORDINARIA
+  MULTA
+  INTERES
+}
+
+enum EstadoCuota {
+  PENDIENTE
+  PAGADA
+  VENCIDA
+  PARCIAL
+}
+
+model Pago {
+  id               String      @id @default(cuid())
+  numero           String      @unique
+  valor            Float
+  metodoPago       MetodoPago
+  referencia       String?     // Referencia del pago
+  comprobante      String?     // URL del comprobante
+  
+  // Relaciones
+  propiedadId      String
+  propiedad        Propiedad   @relation(fields: [propiedadId], references: [id])
+  cuotaId          String?
+  cuota            Cuota?      @relation(fields: [cuotaId], references: [id])
+  
+  // Estado
+  estado           EstadoPago  @default(PENDIENTE)
+  fechaPago        DateTime    @default(now())
+  fechaCreacion    DateTime    @default(now())
+  
+  @@map("pagos")
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TRANSFERENCIA
+  TARJETA_CREDITO
+  TARJETA_DEBITO
+  PSE
+  OTRO
+}
+
+enum EstadoPago {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  ANULADO
+}
+
+// =====================================
+// GESTIÓN DE ASAMBLEAS
+// =====================================
+
+model Asamblea {
+  id               String         @id @default(cuid())
+  titulo           String
+  descripcion      String?
+  fechaInicio      DateTime
+  fechaFin         DateTime
+  lugar            String?
+  virtual          Boolean        @default(false)
+  enlaceVirtual    String?
+  
+  // Estado
+  estado           EstadoAsamblea @default(PROGRAMADA)
+  quorum           Float?         // Porcentaje de quórum alcanzado
+  
+  // Documentos
+  ordenDia         String?
+  acta             String?
+  
+  // Metadatos
+  fechaCreacion    DateTime       @default(now())
+  fechaActualizacion DateTime     @updatedAt
+  
+  // Relaciones
+  asistencias      AsistenciaAsamblea[]
+  votaciones       Votacion[]
+  
+  @@map("asambleas")
+}
+
+enum EstadoAsamblea {
+  PROGRAMADA
+  EN_CURSO
+  FINALIZADA
+  CANCELADA
+}
+
+model AsistenciaAsamblea {
+  id           String    @id @default(cuid())
+  asambleaId   String
+  propiedadId  String
+  presente     Boolean   @default(false)
+  representante String?  // Nombre del representante
+  poder        Boolean   @default(false) // Si asiste con poder
+  
+  // Relaciones
+  asamblea     Asamblea  @relation(fields: [asambleaId], references: [id])
+  propiedad    Propiedad @relation(fields: [propiedadId], references: [id])
+  
+  // Metadatos
+  fechaRegistro DateTime @default(now())
+  
+  @@unique([asambleaId, propiedadId])
+  @@map("asistencias_asambleas")
+}
+
+model Votacion {
+  id               String       @id @default(cuid())
+  asambleaId       String
+  titulo           String
+  descripcion      String?
+  tipo             TipoVotacion
+  opciones         Json         // Array de opciones de votación
+  
+  // Configuración
+  multiple         Boolean      @default(false) // Permite múltiples opciones
+  anonima          Boolean      @default(false)
+  fechaInicio      DateTime
+  fechaFin         DateTime
+  
+  // Estado
+  estado           EstadoVotacion @default(PENDIENTE)
+  resultados       Json?        // Resultados de la votación
+  
+  // Relaciones
+  asamblea         Asamblea     @relation(fields: [asambleaId], references: [id])
+  votos            Voto[]
+  
+  // Metadatos
+  fechaCreacion    DateTime     @default(now())
+  
+  @@map("votaciones")
+}
+
+enum TipoVotacion {
+  SIMPLE         // Sí/No
+  MULTIPLE      // Múltiples opciones
+  SECRETA       // Votación secreta
+  PUBLICA       // Votación pública
+}
+
+enum EstadoVotacion {
+  PENDIENTE
+  ACTIVA
+  FINALIZADA
+  CANCELADA
+}
+
+model Voto {
+  id           String    @id @default(cuid())
+  votacionId   String
+  propiedadId  String
+  opcion       Json      // Opción seleccionada
+  comentario   String?
+  
+  // Relaciones
+  votacion     Votacion  @relation(fields: [votacionId], references: [id])
+  propiedad    Propiedad @relation(fields: [propiedadId], references: [id])
+  
+  // Metadatos
+  fechaVoto    DateTime  @default(now())
+  
+  @@unique([votacionId, propiedadId])
+  @@map("votos")
+}
+
+// =====================================
+// SERVICIOS COMUNES Y RESERVAS
+// =====================================
+
+model ServicioComun {
+  id               String    @id @default(cuid())
+  nombre           String
+  descripcion      String?
+  capacidad        Int?
+  costo            Float     @default(0)
+  requiereReserva  Boolean   @default(true)
+  activo           Boolean   @default(true)
+  
+  // Horarios
+  horaInicio       String?   // HH:MM
+  horaFin          String?   // HH:MM
+  diasDisponibles  String[]  // Array de días: ["lunes", "martes", ...]
+  
+  // Configuración
+  tiempoMinimo     Int       @default(60)  // Minutos mínimos de reserva
+  tiempoMaximo     Int       @default(480) // Minutos máximos de reserva
+  anticipacion     Int       @default(24)  // Horas de anticipación
+  
+  // Metadatos
+  fechaCreacion    DateTime  @default(now())
+  fechaActualizacion DateTime @updatedAt
+  
+  // Relaciones
+  reservas         Reserva[]
+  
+  @@map("servicios_comunes")
+}
+
+model Reserva {
+  id               String         @id @default(cuid())
+  servicioId       String
+  propiedadId      String
+  fechaInicio      DateTime
+  fechaFin         DateTime
+  
+  // Información adicional
+  numeroPersonas   Int            @default(1)
+  observaciones    String?
+  
+  // Estado
+  estado           EstadoReserva  @default(PENDIENTE)
+  
+  // Relaciones
+  servicio         ServicioComun  @relation(fields: [servicioId], references: [id])
+  propiedad        Propiedad      @relation(fields: [propiedadId], references: [id])
+  
+  // Metadatos
+  fechaCreacion    DateTime       @default(now())
+  fechaActualizacion DateTime     @updatedAt
+  
+  @@map("reservas")
+}
+
+enum EstadoReserva {
+  PENDIENTE
+  CONFIRMADA
+  CANCELADA
+  FINALIZADA
+}
+
+// =====================================
+// ARCHIVOS Y DOCUMENTOS
+// =====================================
+
+model ArchivoAdjunto {
+  id           String    @id @default(cuid())
+  nombre       String
+  ruta         String
+  tamaño       Int       // Tamaño en bytes
+  tipoMime     String
+  
+  // Relaciones opcionales
+  pqrId        String?
+  pqr          PQR?      @relation(fields: [pqrId], references: [id])
+  
+  // Metadatos
+  fechaCreacion DateTime @default(now())
+  
+  @@map("archivos_adjuntos")
+}
+
+// =====================================
+// LOGS Y AUDITORÍA
+// =====================================
+
+model LogActividad {
+  id           String    @id @default(cuid())
+  usuarioId    String?
+  accion       String    // Descripción de la acción
+  entidad      String    // Entidad afectada
+  entidadId    String?   // ID de la entidad
+  ip           String?   // IP del usuario
+  userAgent    String?   // User agent
+  
+  // Metadatos
+  fecha        DateTime  @default(now())
+  
+  @@map("logs_actividad")
+}
