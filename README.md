@@ -1,3 +1,4 @@
+
 # 🏢 Armonía - Sistema de Administración de Conjuntos Residenciales
 
 [![CI/CD Pipeline](https://github.com/CIDESOLUTIONS/AppArmonia/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/CIDESOLUTIONS/AppArmonia/actions/workflows/ci-cd.yml)
@@ -276,3 +277,4 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 ⭐ Si este proyecto te resultó útil, ¡dale una estrella en GitHub!
 
 🏢 **Armonía** - Transformando la gestión residencial con tecnología avanzada.
+
