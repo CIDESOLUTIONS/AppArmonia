@@ -1,4 +1,4 @@
-import { Building2, Home, DollarSign, Calendar, MessageSquare, LogOut } from 'lucide-react';
+import { Building2, Home, DollarSign, Calendar, MessageSquare, Car, Heart, User, LogOut } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ResidentLayout({
@@ -39,9 +39,27 @@ export default function ResidentLayout({
               </Link>
             </li>
             <li>
+              <Link href="/resident/vehiculos" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                <Car className="h-5 w-5 mr-3" />
+                Mis Vehículos
+              </Link>
+            </li>
+            <li>
+              <Link href="/resident/mascotas" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                <Heart className="h-5 w-5 mr-3" />
+                Mis Mascotas
+              </Link>
+            </li>
+            <li>
               <Link href="/resident/pqr" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
                 <MessageSquare className="h-5 w-5 mr-3" />
                 PQR
+              </Link>
+            </li>
+            <li>
+              <Link href="/resident/perfil" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                <User className="h-5 w-5 mr-3" />
+                Mi Perfil
               </Link>
             </li>
           </ul>

@@ -1,4 +1,4 @@
-import { Building2, Users, BarChart3, Calendar, Settings, LogOut } from 'lucide-react';
+import { Building2, Users, UserCheck, BarChart3, Calendar, Settings, LogOut } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminLayout({
@@ -30,6 +30,12 @@ export default function AdminLayout({
               <Link href="/admin/propiedades" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
                 <Building2 className="h-5 w-5 mr-3" />
                 Propiedades
+              </Link>
+            </li>
+            <li>
+              <Link href="/admin/propietarios" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                <UserCheck className="h-5 w-5 mr-3" />
+                Propietarios
               </Link>
             </li>
             <li>
