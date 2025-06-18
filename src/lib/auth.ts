@@ -453,3 +453,50 @@ export const AUTH_CONSTANTS = {
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días en ms
   },
 };
+
+// =============================================
+// HELPERS PARA API ROUTES
+// =============================================
+
+/**
+ * Obtiene el usuario autenticado desde una NextRequest
+ * Utiliza el header Authorization o cookies como fallback
+ */
+export function getAuthenticatedUser(request: Request): SessionInfo {
+  // Intentar obtener desde Authorization header
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader) {
+    return validateSession(authHeader);
+  }
+
+  // Intentar obtener desde cookies
+  const cookieHeader = request.headers.get('Cookie');
+  if (cookieHeader) {
+    return getUserFromCookies(cookieHeader);
+  }
+
+  return { isValid: false, error: 'No se encontraron credenciales de autenticación' };
+}
+
+/**
+ * Interfaz para simular getServerSession de NextAuth
+ * para compatibilidad con código existente
+ */
+export async function getServerSession(request?: Request): Promise<{ user?: JWTPayload } | null> {
+  if (!request) {
+    return null;
+  }
+
+  const session = getAuthenticatedUser(request);
+  if (!session.isValid || !session.user) {
+    return null;
+  }
+
+  return {
+    user: {
+      ...session.user,
+      id: session.user.userId,
+      role: session.user.rol,
+    }
+  };
+}
